@@ -1,3 +1,10 @@
+/**
+ * @description 创建元素数据
+ * @param {*} type html标签
+ * @param {*} props 
+ * @param  {...any} children 
+ * @returns 
+ */
 function createElement(type, props, ...children) {
   return {
     type,
@@ -10,9 +17,14 @@ function createElement(type, props, ...children) {
   };
 }
 
+/**
+ * @description 创建文字元素数据
+ * @param {*} text 
+ * @returns 
+ */
 function createTextElement(text) {
   return {
-    type: "TEXT_ELEMENT",
+    type: "TEXT_ELEMENT", // 类型
     props: {
       nodeValue: text,
       children: []
@@ -20,12 +32,20 @@ function createTextElement(text) {
   };
 }
 
+/**
+ * @description 创建DOM
+ * @param {*} fiber 
+ * @returns 
+ */
 function createDom(fiber) {
+
+  // 根据fiber的type属性创建真实DOM
   const dom =
     fiber.type == "TEXT_ELEMENT"
       ? document.createTextNode("")
       : document.createElement(fiber.type);
 
+  // 更新DOM的属性
   updateDom(dom, {}, fiber.props);
 
   return dom;
@@ -35,22 +55,34 @@ const isEvent = key => key.startsWith("on");
 const isProperty = key => key !== "children" && !isEvent(key);
 const isNew = (prev, next) => key => prev[key] !== next[key];
 const isGone = (prev, next) => key => !(key in next);
+
+/**
+ * @description 更新DOM属性
+ * @param {*} dom 
+ * @param {*} prevProps 
+ * @param {*} nextProps 
+ */
 function updateDom(dom, prevProps, nextProps) {
-  //Remove old or changed event listeners
+  
+  // 移除旧的或者被改变的事件监听
   Object.keys(prevProps)
     .filter(isEvent)
+
+    // 这里应该isNew就可以完成需求了
     .filter(key => !(key in nextProps) || isNew(prevProps, nextProps)(key))
     .forEach(name => {
       const eventType = name.toLowerCase().substring(2);
       dom.removeEventListener(eventType, prevProps[name]);
     });
 
-  // Remove old properties
+  // 删除属性
   Object.keys(prevProps)
     .filter(isProperty)
     .filter(isGone(prevProps, nextProps))
     .forEach(name => {
       dom[name] = "";
+
+      // 此处应该使用这句dom.removeAttribute(name);
     });
 
   // Set new or changed properties
@@ -59,6 +91,8 @@ function updateDom(dom, prevProps, nextProps) {
     .filter(isNew(prevProps, nextProps))
     .forEach(name => {
       dom[name] = nextProps[name];
+
+      // dom.setAttribute(name, nextProps[name]);
     });
 
   // Add event listeners
@@ -71,19 +105,36 @@ function updateDom(dom, prevProps, nextProps) {
     });
 }
 
+/**
+ * @description 递归进行commit
+ */
 function commitRoot() {
+
+  // 先处理被删除的节点
   deletions.forEach(commitWork);
+
+  // 从firstChild开始进行
   commitWork(wipRoot.child);
+
+  // commit结束时将工作中的root设置为当前root并删除wi引用
   currentRoot = wipRoot;
   wipRoot = null;
 }
 
+/**
+ * @description 对单个fiber执行commit
+ * @param {*} fiber 
+ * @returns 
+ */
 function commitWork(fiber) {
   if (!fiber) {
     return;
   }
 
+  // 向上查询DOM用于可能遇到的插入操作
   let domParentFiber = fiber.parent;
+
+  // 使用while的原因是有的fiber节点可能是没有dom的
   while (!domParentFiber.dom) {
     domParentFiber = domParentFiber.parent;
   }
@@ -97,11 +148,14 @@ function commitWork(fiber) {
     commitDeletion(fiber, domParent);
   }
 
+  // 依次递归执行commit
   commitWork(fiber.child);
   commitWork(fiber.sibling);
 }
 
 function commitDeletion(fiber, domParent) {
+
+  // 找到fiber节点的首个dom并进行移除
   if (fiber.dom) {
     domParent.removeChild(fiber.dom);
   } else {
@@ -126,8 +180,16 @@ let currentRoot = null;
 let wipRoot = null;
 let deletions = null;
 
+/**
+ * @description 循环执行work，可被中断。当超过指定时间时会将控制权返还给浏览器，
+ * 然后根据work和wipRoot的情况判断是否进行commit
+ * @param {*} deadline 
+ */
 function workLoop(deadline) {
   let shouldYield = false;
+
+  // 整个work的执行时间不能超过指定时间
+  // 不过这里的指定时间是个参考值，无法控制，如果某个work的执行时间很长则会超出指定时间
   while (nextUnitOfWork && !shouldYield) {
     nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
@@ -142,6 +204,11 @@ function workLoop(deadline) {
 
 requestIdleCallback(workLoop);
 
+/**
+ * @description 处理指定fiber的work(更新fiber)并返回下一个需要处理的fiber
+ * @param {*} fiber 
+ * @returns 
+ */
 function performUnitOfWork(fiber) {
   const isFunctionComponent = fiber.type instanceof Function;
   if (isFunctionComponent) {
@@ -161,9 +228,13 @@ function performUnitOfWork(fiber) {
   }
 }
 
-let wipFiber = null;
+let wipFiber = null; // 正在进行处理的fiber
 let hookIndex = null;
 
+/**
+ * @description 根据fiber更新function组件
+ * @param {*} fiber 
+ */
 function updateFunctionComponent(fiber) {
   wipFiber = fiber;
   hookIndex = 0;
